@@ -10,12 +10,18 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', default=1234, type=int, help='seed')
 parser.add_argument('--n', default=100, type=int, help='cells per dimension')
 parser.add_argument('--surf', default='E', type=str, help='surface type')
-parser.add_argument('--n_frames', default=100, type=int, help='# of frames')
+parser.add_argument('--frames', default=100, type=int, help='# of frames')
 parser.add_argument('--interval', default=100, type=int, help='interval bw frames')
 parser.add_argument('--stats', action='store_true', help='statistics')
+parser.add_argument('--soup', default='bloch', type=str, help='random soup')
+parser.add_argument('--ext', default='gif', type=str, help='file extension')
+parser.add_argument('--fps', default=None, type=int, help='frames per second')
+parser.add_argument('--bitrate', default=None, type=int, help='bitrate in kbps')
 
 args = parser.parse_args()
 n = args.n
+filename = f"sqgol_{n}_{args.surf}_{args.frames}_{args.soup}{'_stats' if args.stats else ''}.{args.ext}"
+print(f'File will be saved as {filename}')
 
 np.random.seed(args.seed)
 
@@ -136,6 +142,30 @@ class Universe():
     def flip(self, i, j):
         self.arr[i,j] = Z(self.arr[i,j])
 
+U = Universe(n, args.surf)
+if args.soup=='bloch':
+    rand = np.random.random((3,n,n))
+    a, b = np.sqrt([rand[0], 1.-rand[0]])
+    U.arr = np.stack([a*np.exp(2j*np.pi*rand[1]), b*np.exp(2j*np.pi*rand[2])], axis=2)
+elif args.soup=='pure':
+    rand = np.random.random((3,n,n))
+    a = rand[0]<0.5
+    U.arr = np.stack([a*np.exp(2j*np.pi*rand[1]), (1-a)*np.exp(2j*np.pi*rand[2])], axis=2)
+elif args.soup=='roots':
+    rand = np.random.random((3,n,n))
+    a = rand[0]<0.5
+    b = np.array([1, 1j, -1, -1j])
+    U.arr = np.stack([a*np.exp(2j*np.pi*rand[1]), (1-a)*b[(rand[2]//0.25).astype(int)]], axis=2)
+elif args.soup=='real':
+    rand = np.random.random((3,n,n))
+    a = rand[0]<0.5
+    b = np.array([1, -1])
+    U.arr = np.stack([a*np.exp(2j*np.pi*rand[1]), (1-a)*b[(rand[2]//0.5).astype(int)]], axis=2)
+elif args.soup=='gol':
+    rand = np.random.random((2,n,n))
+    a = rand[0]<0.5
+    U.arr = np.stack([a*np.exp(2j*np.pi*rand[1]), (1-a)*1.], axis=2)
+
 def init():
     return im,
 
@@ -143,10 +173,10 @@ if args.stats:
     def evolve(i):
         im.set_array(colorize(U.life()))
         life = np.abs(U.life().flatten())**2
-        y, _ = np.histogram(life, 10, density=True)
+        y, _ = np.histogram(life, 10, range=(0,1), density=True)
         for count, rect in zip(y, mod.patches):
             rect.set_height(count)
-        y, _ = np.histogram(np.angle(U.life().flatten())[life>0.5], 100, density=True)
+        y, _ = np.histogram(np.angle(U.life().flatten()), 100, range=(-np.pi,np.pi), weights=life, density=True)
         for count, rect in zip(y, arg.patches):
             rect.set_height(count)
         U.tick()
@@ -156,26 +186,20 @@ if args.stats:
         h = (np.angle(z)+np.pi)/(2*np.pi)+0.5
         l = 2/np.pi*np.arctan(np.abs(z))
         s = 1.
-        c = np.vectorize(hls_to_rgb) (h,l,s)
-        c = np.array(c).T
+        c = hls_to_rgb(h,l,s)
         return c
-    palette = colorize_([np.exp(1j*angle) for angle in np.arange(-np.pi,np.pi,2*np.pi/100.)])
 
     fig = plt.figure(figsize=(9,6))
     gs = GridSpec(2, 3, figure=fig)
     ax0 = fig.add_subplot(gs[:,:2])
     ax1 = fig.add_subplot(gs[0,2])
     ax2 = fig.add_subplot(gs[1,2], projection='polar')
-    U = Universe(n, args.surf)
-    rand = np.random.random((3,n,n))
-    a, b = np.sqrt([rand[0], 1.-rand[0]])
-    U.arr = np.stack([a*np.exp(2j*np.pi*rand[1]), b*np.exp(2j*np.pi*rand[2])], axis=2)
     im = ax0.imshow(colorize(U.life()), animated=True)
     life = np.abs(U.life().flatten())**2
-    _,_, mod = ax1.hist(life, 10, density=True)
-    _,_, arg = ax2.hist(np.angle(U.life().flatten()), 100, density=True, weights=life)
-    for i,rect in enumerate(arg.patches):
-        rect.set_facecolor(palette[i])
+    _,_, mod = ax1.hist(life, 10, range=(0,1), density=True)
+    _,_, arg = ax2.hist(np.angle(U.life().flatten()), 100, range=(-np.pi,np.pi), weights=life, density=True)
+    for rect in arg.patches:
+        rect.set_facecolor(colorize_(np.exp(1j*rect.xy[0])))
     ax1.set_xlim(0, 1)
     ax1.set_ylim(0, 10)
     ax2.set_ylim(0, 0.5)
@@ -188,24 +212,17 @@ if args.stats:
     ax1.set_xlabel(r'$|\langle 1 | \psi \rangle|^2$')
     ax2.set_ylabel(r'$\arg(\langle 1 | \psi \rangle) \times |\langle 1 | \psi \rangle|^2$')
     ax0.set_title(r'$\langle 1 | \psi \rangle$')
-    fig.tight_layout()
-    ani = anim.FuncAnimation(fig, evolve, init_func=init, blit=True, frames=tqdm(range(args.n_frames),initial=1), interval=args.interval)
-    ani.save(f'sqgol_{U.surface}_stats.gif')
-    plt.close()
 else:
     def evolve(i):
         im.set_array(colorize(U.life()))
         U.tick()
         return im,
 
-    fig = plt.figure(figsize=(5,5))
-    U = Universe(n, args.surf)
-    rand = np.random.random((3,n,n))
-    a, b = np.sqrt([rand[0], 1.-rand[0]])
-    U.arr = np.stack([a*np.exp(2j*np.pi*rand[1]), b*np.exp(2j*np.pi*rand[2])], axis=2)
+    fig = plt.figure(figsize=(6,6))
     im = plt.imshow(colorize(U.life()), animated=True)
     plt.axis('off')
-    fig.tight_layout()
-    ani = anim.FuncAnimation(fig, evolve, init_func=init, blit=True, frames=tqdm(range(args.n_frames),initial=1), interval=args.interval)
-    ani.save(f'sqgol_{U.surface}.gif')
-    plt.close()
+
+fig.tight_layout()
+ani = anim.FuncAnimation(fig, evolve, init_func=init, blit=True, frames=tqdm(range(args.frames),initial=1), interval=args.interval)
+ani.save(filename, fps=args.fps, bitrate=args.bitrate)
+plt.close()
