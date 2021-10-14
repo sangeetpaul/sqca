@@ -54,7 +54,7 @@ class Universe():
     def __init__(self, n=5, surface='E'):
         self.arr = np.stack([np.ones((n,n), complex), np.zeros((n,n), complex)], axis=2)
         self.n = n
-        self.surface=surface
+        self.surface = surface
     def life(self):
         life = self.arr[:,:,1]
         return life
@@ -141,6 +141,14 @@ class Universe():
         self.arr = g
     def flip(self, i, j):
         self.arr[i,j] = Z(self.arr[i,j])
+    def same(self, U):
+        for k in range(4):
+            if np.allclose(np.rot90(self.life(), k), U.life()):
+                return True
+        for k in range(4):
+            if np.allclose(np.rot90(self.life()[::-1], k), U.life()):
+                return True
+        return False
 
 U = Universe(n, args.surf)
 if args.soup=='bloch':
@@ -218,7 +226,7 @@ else:
         U.tick()
         return im,
 
-    fig = plt.figure(figsize=(6,6))
+    fig = plt.figure(figsize=(10,10))
     im = plt.imshow(colorize(U.life()), animated=True)
     plt.axis('off')
 
