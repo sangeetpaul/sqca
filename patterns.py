@@ -10,13 +10,13 @@ import os
 if not os.path.exists('patterns'):
     os.mkdir('patterns')
 
-def colorize_(i):
+def colorize_(i):  # convert 0,1,2 to k,C0,C1
     if i==0:
         return to_rgba('k')
     else:
         return to_rgba(f'C{i-1}')
 
-def colorize(arr):
+def colorize(arr):  # convert 2d array to RGBA array
     rgba = np.vectorize(colorize_)(arr)
     rgba = np.array(rgba).transpose(1,2,0)
     return rgba
@@ -59,7 +59,7 @@ def plot_apgcode(apgcode):
 cat_url = 'https://catagolue.hatsya.com'
 hauls_url = cat_url+'/haul/xundead_b3s23/pcg64_16x16_1_1_1_stdin?committed=2'
 
-hauls = pd.read_html(hauls_url)[0]
+# scrape Catagolue for hauls
 response = requests.get(hauls_url)
 soup = BeautifulSoup(response.text, 'html.parser')
 table = soup.find('table')
@@ -72,20 +72,39 @@ for tr in table.findAll('tr'):
             links.append(link)
         except:
             pass
-hauls['Link'] = links[::2]
+haul_urls = links[::2]
 
+# scrape hauls for "interesting" patterns
 patterns = np.array([])
-for link in hauls['Link']:
+for link in haul_urls:
     haul_url = cat_url+link
-    haul = pd.read_html(haul_url)[0]
-    pats = np.array([obj.split()[0] for obj in haul['Object']])
+    response = requests.get(haul_url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    table = soup.find('table')
+    links = []
+    for tr in table.findAll('tr'):
+        trs = tr.findAll('td')
+        for each in trs:
+            try:
+                link = each.find('a')['href']
+                links.append(link)
+            except:
+                pass
+    pat_urls = np.array(links)[['object' in link for link in links]]
+    pats = np.array([obj.split('/')[2] for obj in pat_urls])
     pats = pats[np.logical_and(np.char.count(pats, '_')==2, np.array([obj.split('_')[1] for obj in pats])!='0')]
     patterns = np.union1d(patterns, pats)
 
+# save patterns as images
 for pattern in tqdm(patterns):
     try:
+        category = pattern.split('_')[0]
+        if os.path.exists(f'patterns/{category}/{pattern}.png'):
+            continue
+        if not os.path.exists(f'patterns/{category}'):
+            os.mkdir(f'patterns/{category}')
         fig = plot_apgcode(pattern)
-        fig.savefig(f'patterns/{pattern}.png', bbox_inches='tight', pad_inches = 0)
+        fig.savefig(f'patterns/{category}/{pattern}.png', bbox_inches='tight', pad_inches = 0)
         plt.close()
     except:
-        print(pattern)
+        print(f'Could not save {pattern}')
