@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from colorsys import hls_to_rgb
+from scipy.signal import convolve2d
 
 const = np.sqrt(2) + 1
 
@@ -23,19 +24,19 @@ def colorize(z):
     return c
 
 
-def B(q, phi):  # qubit is measured and set to |1>
+def birth(q, phi):  # qubit is measured and set to |1>
     return normalize(np.array([0., np.abs(q[0]) * np.exp(1j * phi) + q[1]], complex))
 
 
-def S(q):  # identity
+def survival(q):  # identity
     return np.dot(np.array([[1, 0], [0, 1]], complex), q)
 
 
-def D(q, phi):  # qubit is measured and set to |0>
+def death(q, phi):  # qubit is measured and set to |0>
     return normalize(np.array([q[0] + np.abs(q[1]) * np.exp(1j * phi), 0.], complex))
 
 
-def Z(q):  # Pauli-Z
+def pauli_z(q):  # Pauli-Z
     return np.dot(np.array([[0, 1], [1, 0]], complex), q)
 
 
@@ -49,6 +50,8 @@ class Automaton:
             raise ValueError(f'Surface cannot be {surface}')
         if kernel == 'M1':
             self.kernel = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]])
+        elif kernel == 'vN1':
+            self.kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
 
     def life(self):  # aliveness of the cell
         life = self.arr[:, :, 1]
@@ -65,7 +68,7 @@ class Automaton:
 
     def alpha(self):  # aliveness of the neighborhood
         if self.surface == 'E':  # plane
-            pad = np.pad(self.arr[:, :, 1], 1)
+            return convolve2d(self.life(), self.kernel, 'same')
         elif self.surface == 'S':  # sphere
             pad = np.pad(self.arr[:, :, 1], 1, 'edge')
             pad[0, 1:-1] = self.arr[::-1, -1, 1]
@@ -73,7 +76,7 @@ class Automaton:
             pad[-1, 1:-1] = self.arr[::-1, 0, 1]
             pad[1:-1, 0] = self.arr[-1, ::-1, 1]
         elif self.surface == 'T':  # torus
-            pad = np.pad(self.arr[:, :, 1], 1, 'wrap')
+            return convolve2d(self.life(), self.kernel, 'wrap')
         elif self.surface == 'K':  # klein bottle
             pad = np.pad(self.arr[:, :, 1], 1, 'wrap')
             pad[0] = pad[0, ::-1]
@@ -89,15 +92,15 @@ class Automaton:
             a += pad[x + 1:x + 1 + self.n, y + 1:y + 1 + self.n]
         return a
 
-    def G(self):  # next generation
+    def next_gen(self):  # next generation
         a = self.alpha()
         A, phi = np.abs(a)[..., None], np.angle(a)
         fA = A % 1
         fA = np.where(fA == 0, 1, fA)
         mA = 1 - fA
-        b = np.vectorize(B, signature='(2),()->(2)')(self.arr, phi)
+        b = np.vectorize(birth, signature='(2),()->(2)')(self.arr, phi)
         s = self.arr
-        d = np.vectorize(D, signature='(2),()->(2)')(self.arr, phi)
+        d = np.vectorize(death, signature='(2),()->(2)')(self.arr, phi)
         sel = np.stack([np.logical_or(np.logical_and(0 <= A, A <= 1), 4 <= A),
                         np.logical_and(1 < A, A <= 2),
                         np.logical_and(2 < A, A <= 3),
@@ -110,11 +113,11 @@ class Automaton:
         return g
 
     def tick(self):
-        g = self.G()
+        g = self.next_gen()
         self.arr = g
 
     def flip(self, i, j):
-        self.arr[i, j] = Z(self.arr[i, j])
+        self.arr[i, j] = pauli_z(self.arr[i, j])
 
     def same(self, auto):
         for k in range(4):
