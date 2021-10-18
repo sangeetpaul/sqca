@@ -41,17 +41,36 @@ def pauli_z(q):  # Pauli-Z
 
 
 class Automaton:
-    def __init__(self, n=5, surface='T', kernel='M1'):
+    def __init__(self, n=5, surface='T', kernel='M', radius=1):
         self.arr = np.stack([np.ones((n, n), complex), np.zeros((n, n), complex)], axis=2)
         self.n = n
         if surface in ['E', 'S', 'T', 'K', 'P']:
             self.surface = surface
         else:
             raise ValueError(f'Surface cannot be {surface}')
-        if kernel == 'M1':
-            self.kernel = np.array([[1, 1, 1], [1, 0, 1], [1, 1, 1]])
-        elif kernel == 'vN1':
-            self.kernel = np.array([[0, 1, 0], [1, 0, 1], [0, 1, 0]])
+        if kernel == 'M':  # Moore
+            self.kernel = np.ones((2*radius+1, 2*radius+1))
+            self.kernel[radius, radius] = 0
+        elif kernel == 'vN':  # von Neumann
+            self.kernel = np.zeros((2*radius+1, 2*radius+1))
+            self.kernel[radius, :] = 1
+            self.kernel[:, radius] = 1
+            self.kernel[radius, radius] = 0
+        elif kernel == 'd':  # diamond
+            self.kernel = np.zeros((2*radius+1, 2*radius+1))
+            for i in range(2*radius+1):
+                self.kernel[i, abs(radius-i):2*radius+1-abs(radius-i)] = 1
+            self.kernel[radius, radius] = 0
+        elif kernel == 'c':  # circle (disc)
+            self.kernel = np.zeros((2*radius+1, 2*radius+1))
+            for i in range(2*radius+1):
+                for j in range(2*radius+1):
+                    if (radius-i)**2+(radius-j)**2 <= radius**2+1:
+                        self.kernel[i, j] = 1
+            self.kernel[radius, radius] = 0
+        else:
+            raise ValueError(f'Kernel cannot be {kernel}')
+        self.radius = radius
 
     def life(self):  # aliveness of the cell
         life = self.arr[:, :, 1]
@@ -70,27 +89,26 @@ class Automaton:
         if self.surface == 'E':  # plane
             return convolve2d(self.life(), self.kernel, 'same')
         elif self.surface == 'S':  # sphere
-            pad = np.pad(self.arr[:, :, 1], 1, 'edge')
+            pad = np.pad(self.life(), self.radius, 'edge')
             pad[0, 1:-1] = self.arr[::-1, -1, 1]
             pad[1:-1, -1] = self.arr[0, ::-1, 1]
             pad[-1, 1:-1] = self.arr[::-1, 0, 1]
             pad[1:-1, 0] = self.arr[-1, ::-1, 1]
+            return convolve2d(pad, self.kernel, 'valid')
         elif self.surface == 'T':  # torus
-            return convolve2d(self.life(), self.kernel, 'wrap')
+            return convolve2d(self.life(), self.kernel, 'same', 'wrap')
         elif self.surface == 'K':  # klein bottle
-            pad = np.pad(self.arr[:, :, 1], 1, 'wrap')
+            pad = np.pad(self.life(), self.radius, 'wrap')
             pad[0] = pad[0, ::-1]
             pad[-1] = pad[-1, ::-1]
+            return convolve2d(pad, self.kernel, 'valid')
         elif self.surface == 'P':  # projective plane
-            pad = np.pad(self.arr[:, :, 1], 1, 'wrap')
+            pad = np.pad(self.life(), self.radius, 'wrap')
             pad[0] = pad[0, ::-1]
             pad[-1] = pad[-1, ::-1]
             pad[:, 0] = pad[::-1, 0]
             pad[:, -1] = pad[::-1, -1]
-        a = np.zeros((self.n, self.n), complex)
-        for x, y in [(0, 1), (-1, 1), (-1, 0), (-1, -1), (0, -1), (1, -1), (1, 0), (1, 1)]:
-            a += pad[x + 1:x + 1 + self.n, y + 1:y + 1 + self.n]
-        return a
+            return convolve2d(pad, self.kernel, 'valid')
 
     def next_gen(self):  # next generation
         a = self.alpha()

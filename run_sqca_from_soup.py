@@ -11,7 +11,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', default=1234, type=int, help='seed')
 parser.add_argument('--n', default=100, type=int, help='cells per dimension')
 parser.add_argument('--surf', default='T', type=str, help='surface type')
-parser.add_argument('--kernel', default='M1', type=str, help='convolution kernel')
+parser.add_argument('--kernel', default='M', type=str, help='convolution kernel')
+parser.add_argument('--radius', default=1, type=int, help='kernel radius')
 parser.add_argument('--frames', default=100, type=int, help='# of frames')
 parser.add_argument('--interval', default=100, type=int, help='interval bw frames')
 parser.add_argument('--stats', action='store_true', help='statistics')
@@ -22,12 +23,13 @@ parser.add_argument('--bitrate', default=None, type=int, help='bitrate in kbps')
 
 args = parser.parse_args()
 n = args.n
-filename = f"sqca_{n}_{args.surf}_{args.frames}_{args.kernel}_{args.soup}{'_stats' if args.stats else ''}.{args.ext}"
+filename = f"sqca_{n}{args.surf}{args.frames}{args.kernel}{args.radius}{args.soup}" \
+           f"{'_stats' if args.stats else ''}.{args.ext}"
 print(f'File will be saved as {filename}')
 
 np.random.seed(args.seed)
 
-U = sqca.Automaton(n, args.surf, args.kernel)
+U = sqca.Automaton(n, args.surf, args.kernel, args.radius)
 if args.soup == 'bloch':
     rand = np.random.random((3, n, n))
     a, b = np.sqrt([rand[0], 1. - rand[0]])
