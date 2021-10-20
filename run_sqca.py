@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as anim
@@ -23,7 +24,9 @@ parser.add_argument('--bitrate', default=None, type=int, help='bitrate in kbps')
 
 args = parser.parse_args()
 n = args.n
-filename = f"sqca_{n}{args.surf}{args.frames}{args.kernel}{args.radius}{args.soup}" \
+if not os.path.exists('plots'):
+    os.mkdir('plots')
+filename = f"plots/sqca_{n}{args.surf}{args.frames}{args.kernel}{args.radius}{args.soup}" \
            f"{'_stats' if args.stats else ''}.{args.ext}"
 print(f'File will be saved as {filename}')
 
